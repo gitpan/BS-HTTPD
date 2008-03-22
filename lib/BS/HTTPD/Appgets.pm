@@ -8,17 +8,185 @@ require Exporter;
 
 our @ISA = qw/Exporter/;
 
-our @EXPORT = qw/o alink abutton set_appsrv js js_ajaxobj_func/;
+our @EXPORT = qw/o alink abutton set_request set_httpd js js_ajaxobj_func capture form entry/;
 
-our $APPSRV;
+=head1 NAME
 
-sub set_appsrv { $APPSRV = $_[0] }
+BS::HTTPD::Appgets - Some utility functions for web applications
+
+=head1 EXPORTS
+
+This module mostly exports these functions:
+
+=over 4
+
+=cut
+
+our $REQ;
+
+=item B<set_request ($ref)>
+
+This function sets the current request the output is appended
+to for the response.
+
+Use it eg. like this:
+
+   $httpd->reg_cb (
+      _ => sub {
+         my ($httpd, $req) = @_;
+         set_request ($req);
+
+         o "<html><body><h1>test</h1></body></html>";
+
+         $req->respond;
+      }
+   );
+
+=cut
+
+sub set_request { $REQ = $_[0] }
+
+=item B<capture ($block)>
+
+C<capture> temporarily redirects the output done in C<$block> and returns it.
+
+This function should be called with a block as argument like this:
+
+   my $r = capture {
+      o ("<html><body>Hi</body></html>")
+   }
+
+The return value will be simply the concationated output as it would be sent to the
+callback or appended to the reference given to C<set_output>.
+
+=cut
+
+sub capture(&@) {
+   my ($blk) = @_;
+   my $old = $REQ;
+   my $out;
+   $REQ = \$out;
+   $blk->();
+   $REQ = $old;
+   return $out;
+}
+
+our $curform;
+
+=item B<o (@strs)>
+
+This function will append all arguments it gets and
+append that to the current output context, which is either
+set by the C<capture> function or C<set_request>.
+
+If it is called outside a C<capture> function it will just forward
+everything to the C<o> method of C<set_request>.
+
+=cut
+
+sub o {
+   if (ref $REQ ne 'SCALAR') {
+      $REQ->o (join '', @_);
+   } else {
+      $$REQ .= join '', @_;
+   }
+}
+
+=item B<form ($block, $callback)>
+
+This function will generate a html form for you, which you can fill
+with your own input elements. The C<$callback> will be called when the next
+request is handled and if the form was submitted. It will be executed before any
+of your content callbacks are run.
+The C<form> function has a special prototype which allows this syntax:
+
+   my $new_element;
+   form {
+      entry (\$new_element);
+      o '<input type="submit" value="append"/>'
+   } sub {
+      push @list, $new_element;
+   };
+
+This function is just a convenience wrapper around the C<form> method
+of the L<BS::HTTPD> object.
+
+=cut
+
+sub form(&;@) {
+   my ($blk, $formcb) = @_;
+   $curform = { next_field_idx => 1 };
+   my $f = capture { $blk->() };
+   my $thisform = $curform;
+   $curform = undef;
+   my $set_refs = sub {
+      my ($req) = @_;
+
+      for (keys %{$thisform->{flds}}) {
+         ${$thisform->{flds}->{$_}} = $req->parm ("field$_");
+      }
+
+      $formcb->($req);
+   };
+   o ($REQ->form ($f, $set_refs));
+}
+
+=item B<entry ($ref)>
+
+This function will output a text input form field via the C<o> function
+which will set the scalar reference to the value of the text field
+when the form is submitted.
+
+See also the C<form> function above for an example.
+
+=cut
+
+sub entry {
+   my ($ref) = @_;
+   my $idx = $curform->{next_field_idx}++;
+   $curform->{flds}->{$idx} = $ref;
+   o "<input type=\"text\" name=\"field$idx\" value=\"".escapeHTML ($$ref)."\" />";
+}
+
+=item B<js (@strs)>
+
+This function will output the C<@strs> appended enclosed in a HTML
+script tag for javascript.
+
+See also the C<o> function.
+
+=cut
 
 sub js {
    o ("<script type=\"text/javascript\">\n");
    o (@_);
    o ("</script>\n");
 }
+
+=item B<js_ajaxobj_func ($funcname)>
+
+This function will output javascript compatibility cruft code
+to get a XMLHttpRequest object. The javascript function C<$funcname>
+will be declared and can be called in javascript code with the
+content callback as first argument:
+
+   js_ajaxobj_func 'newxhreq';
+
+   js (<<'JS');
+      function response_cb (xh, textcontent) {
+         ...
+      }
+
+      var xh = newxhreq (response_cb);
+      xh.open ("GET", "/", true)
+      xh.send (null);
+   JS
+
+The first argument of the C<response_cb> is the XMLHttpRequest object
+and the second the responseText of the finished request.
+
+=cut
+
 sub js_ajaxobj_func {
    my ($funcname) = @_;
    js (<<AJAXFUNC);
@@ -45,26 +213,26 @@ function $funcname (content_cb) {
 }
 AJAXFUNC
 }
-sub o { $APPSRV->o (@_) }
-sub alink {
-   my ($lbl, @args) = @_;
-   $APPSRV->o ($APPSRV->link ($lbl, @args))
-}
 
-sub abutton {
-   my ($lbl, @args) = @_;
-   my %as;
-   if (ref $args[0] eq 'HASH') {
-      %as = %{shift @args};
-   }
-   my $opt;
-   if (defined $as{"onclick"}) {
-      $opt = 'onclick="'.escapeHTML ($as{"onclick"}).'"';
-   }
-   $APPSRV->o ($APPSRV->form (sub {
-      '<input type="submit" '.$opt.' value="'.escapeHTML ($lbl).'" />'
-   }, @args));
-}
+=back
+
+=head1 VARIABLES
+
+=over 4
+
+=item B<$BS::HTTPD::Appgets::JSON_JS>
+
+This variable contains the javascript source of the JSON serializer
+and deserializer described in L<http://www.JSON.org/js.html>.
+
+You can use this in your application by for example output it via the C<js> function
+like this:
+
+   js ($BS::HTTPD::Appgets::JSON_JS);
+
+=back
+
+=cut
 
 our $JSON_JS = <<'JSON_JS_CODE';
 /*

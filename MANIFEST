@@ -3,15 +3,20 @@ MANIFEST
 Makefile.PL
 README
 t/00-load.t
+t/pod-coverage.t
 t/pod.t
 lib/BS/HTTPD/TCPConnection.pm
 lib/BS/HTTPD/TCPListener.pm
 lib/BS/HTTPD/HTTPServer.pm
 lib/BS/HTTPD/HTTPConnection.pm
 lib/BS/HTTPD/Appgets.pm
+lib/BS/HTTPD/Request.pm
 lib/BS/HTTPD.pm
 samples/simple_example
 samples/ajax_example
 samples/bshttp.png
 samples/second_example
+samples/delayed_example
+samples/capture_example
+samples/more_complex_example
 META.yml                                 Module meta-data (added by MakeMaker)

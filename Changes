@@ -1,5 +1,10 @@
 Revision history for BS-HTTPD
 
-0.01 Thu Mar 20 19:53:31 CET 2008
-        - first release
 
+0.02 Sat Mar 22 16:09:55 CET 2008
+	- rewrote the module API to be more "async"
+	- made it possible to respond to requests asynchronously in C<BS::HTTPD>.
+	- added lots of example scripts
+
+0.01 Thu Mar 20 19:53:31 CET 2008
+	- first release
